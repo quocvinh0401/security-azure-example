@@ -1,0 +1,59 @@
+trigger:
+    branches:
+        include:
+            - main
+
+pool:
+    vmImage: "ubuntu-latest"
+
+variables:
+    - name: trivyVersion
+      value: "0.59.1"
+    - name: imageName
+      value: "security-azure"
+    - group: SecuritySecrets
+
+stages:
+    - stage: BuildAndScan
+      jobs:
+          - job: SecurityCheck
+            steps:
+                - script: |
+                      curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz | tar xz
+                      sudo mv gitleaks /usr/local/bin/
+                      gitleaks version
+                  displayName: "Install gitleaks"
+
+                - script: |
+                      gitleaks detect --source . --verbose --exit-code 1
+                  displayName: "Run gitleaks"
+
+                - task: NodeTool@0
+                  inputs:
+                      versionSpec: "20.x"
+                  displayName: "Install Node"
+
+                - script: |
+                      npm install -g snyk
+                      snyk auth $(SNYK_TOKEN)
+                  displayName: "Install and authenticate Snyk"
+
+                - script: |
+                      snyk test --severity-threshold=high
+                  displayName: "Run Snyk Dependency Scan"
+
+                - script: |
+                      sudo apt-get update && sudo apt-get install -y wget
+                      wget https://github.com/aquasecurity/trivy/releases/download/v$(trivyVersion)/trivy_$(trivyVersion)_Linux-64bit.deb
+                      sudo dpkg -i trivy_$(trivyVersion)_Linux-64bit.deb
+                      trivy --version
+                  displayName: "Install Trivy"
+
+                - script: |
+                      docker build -t $(imageName) .
+                  displayName: "Build Docker Image"
+
+                - script: |
+                      trivy image --exit-code 0 --severity LOW,MEDIUM $(imageName)
+                      trivy image --exit-code 1 --severity HIGH,CRITICAL $(imageName)
+                  displayName: "Run Trivy Scan"
