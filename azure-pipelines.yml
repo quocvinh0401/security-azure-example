@@ -10,7 +10,7 @@ variables:
     - name: trivyVersion
       value: "0.59.1"
     - name: imageName
-      value: "security-azure"
+      value: "security-azure-1"
     - group: SecuritySecrets
 
 stages:
